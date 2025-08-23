@@ -1,0 +1,27 @@
+{
+  "name": "gopher-ts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "dev": "tsc && node dist/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bryzcolson/gopher-ts.git"
+  },
+  "author": "biffly",
+  "homepage": "https://github.com/bryzcolson/gopher-ts#readme",
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "fs": "^0.0.1-security",
+    "net": "^1.0.2",
+    "path": "^0.12.7",
+    "url": "^0.11.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.11",
+    "typescript": "^5.9.2"
+  }
+}
