@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node dist/server.js",
     "build": "tsc",
-    "dev": "tsc && node dist/server.js"
+    "dev": "tsc && node dist/server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "repository": {
     "type": "git",
@@ -17,7 +20,11 @@
     "@iarna/toml": "^2.2.5"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.19.11",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   }
 }

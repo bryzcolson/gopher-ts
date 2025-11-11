@@ -1,5 +1,5 @@
 import { readFile, stat, access, constants } from 'fs/promises';
-import { formatGopherResponse } from '../constants.js';
+import { formatGopherResponse } from '../helpers.js';
 import { isUnexpectedError, fileTooLarge, internalError, fileNotFound } from '../utils/errors.js';
 
 export const serveFile = async (

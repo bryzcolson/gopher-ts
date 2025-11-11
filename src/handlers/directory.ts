@@ -1,6 +1,6 @@
 import { readFile, stat, access, constants } from 'fs/promises';
 import { join } from 'path';
-import { formatGopherResponse } from '../constants.js';
+import { formatGopherResponse } from '../helpers.js';
 import { isUnexpectedError, fileTooLarge, internalError, noDirectoryIndex } from '../utils/errors.js';
 
 export const serveDirectory = async (
