@@ -3,6 +3,7 @@ import { readFile, access, constants } from 'fs/promises';
 import { join, dirname, isAbsolute, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
+import { createGopherError, GOPHER_TERMINATOR } from './error.js';
 
 const isUnexpectedError = (error: unknown): boolean => {
   if (!(error instanceof Error)) {
@@ -22,14 +23,14 @@ const serve = async (path: string, root: string): Promise<string> => {
   const resolvedRoot = resolve(root);
   const resolvedRequest = resolve(requestedPath);
   if (!resolvedRequest.startsWith(resolvedRoot + sep) && resolvedRequest !== resolvedRoot) {
-    return '3Access denied\t\terror.host\t1\r\n.\r\n';
+    return createGopherError('Access denied');
   }
 
   const gophermapPath = join(requestedPath, 'gophermap');
   try {
     await access(gophermapPath, constants.R_OK);
     const content = await readFile(gophermapPath, 'utf8');
-    return content + '\r\n.\r\n';
+    return content + GOPHER_TERMINATOR;
   } catch (error) {
     if (isUnexpectedError(error)) {
       console.error(`Error reading gophermap ${gophermapPath}:`, error);
@@ -40,16 +41,16 @@ const serve = async (path: string, root: string): Promise<string> => {
   try {
     await access(requestedPath, constants.R_OK);
     const content = await readFile(requestedPath, 'utf8');
-    return content + '\r\n.\r\n';
+    return content + GOPHER_TERMINATOR;
   } catch (error) {
     // file doesn't exist or isn't readable
     if (isUnexpectedError(error)) {
       console.error(`Error reading file ${requestedPath}:`, error);
-      return '3Internal server error\t\terror.host\t1\r\n.\r\n';
+      return createGopherError('Internal server error');
     }
   }
 
-  return '3File not found\t\terror.host\t1\r\n.\r\n';
+  return createGopherError('File not found');
 };
 
 const startServer = async () => {
@@ -75,7 +76,7 @@ const startServer = async () => {
       } catch (error) {
         console.error('Error handling request:', error);
         try {
-          socket.write('3Internal server error\t\terror.host\t1\r\n.\r\n');
+          socket.write(createGopherError('Internal server error'));
           socket.end();
         } catch (writeError) {
           console.error('Error writing error response:', writeError);
