@@ -1,6 +1,6 @@
 import { createServer } from 'net';
 import { readFileSync, existsSync } from 'fs';
-import { join, dirname, isAbsolute } from 'path';
+import { join, dirname, isAbsolute, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from '@iarna/toml';
 
@@ -26,14 +26,20 @@ const ROOT = isAbsolute(config.server.rootDirectory)
 const serve = (path: string): string => {
   const cleanPath = path === '' || path === '/' ? '' : path;
 
-  const gophermapPath = join(ROOT, cleanPath, 'gophermap');
+  const requestedPath = normalize(join(ROOT, cleanPath));
+  const resolvedRoot = resolve(ROOT);
+  const resolvedRequest = resolve(requestedPath);
+  if (!resolvedRequest.startsWith(resolvedRoot + sep) && resolvedRequest !== resolvedRoot) {
+    return '3Access denied\t\terror.host\t1\r\n.\r\n';
+  }
+
+  const gophermapPath = join(requestedPath, 'gophermap');
   if (existsSync(gophermapPath)) {
     return readFileSync(gophermapPath, 'utf8') + '\r\n.\r\n';
   }
 
-  const directPath = join(ROOT, cleanPath);
-  if (existsSync(directPath)) {
-    return readFileSync(directPath, 'utf8') + '\r\n.\r\n';
+  if (existsSync(requestedPath)) {
+    return readFileSync(requestedPath, 'utf8') + '\r\n.\r\n';
   }
 
   return '3File not found\t\terror.host\t1\r\n.\r\n';
