@@ -1,76 +1,38 @@
 import { createServer, Socket } from 'net';
-import { readFile, access, constants, stat } from 'fs/promises';
-import { join, dirname, isAbsolute, resolve, normalize, sep } from 'path';
+import { stat, access, constants } from 'fs/promises';
+import { join, dirname, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
-import { createGopherError, GOPHER_TERMINATOR } from './error.js';
+import { resolveSafePath } from './utils/path.js';
+import { accessDenied, fileNotFound, internalError } from './utils/errors.js';
+import { serveFile } from './handlers/file.js';
+import { serveDirectory } from './handlers/directory.js';
+import { SHUTDOWN_TIMEOUT } from './constants.js';
 
-const isUnexpectedError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  if (!('code' in error)) {
-    return false;
-  }
-  const errorCode = error.code;
-  return errorCode !== 'ENOENT' && errorCode !== 'EACCES';
-};
+const serve = async (
+  path: string,
+  root: string,
+  hostname: string,
+  port: number,
+  maxFileSize: number
+): Promise<string> => {
+  const requestedPath = resolveSafePath(path, root);
 
-const serve = async (path: string, root: string, hostname: string, port: number, maxFileSize: number): Promise<string> => {
-  const cleanPath = path === '' || path === '/' ? '' : path;
-
-  const requestedPath = normalize(join(root, cleanPath));
-  const resolvedRoot = resolve(root);
-  const resolvedRequest = resolve(requestedPath);
-  if (!resolvedRequest.startsWith(resolvedRoot + sep) && resolvedRequest !== resolvedRoot) {
-    return createGopherError('Access denied', hostname, port);
+  if (!requestedPath) {
+    return accessDenied(hostname, port);
   }
 
   try {
     await access(requestedPath, constants.R_OK);
     const stats = await stat(requestedPath);
 
-    // If it's a directory, look for gophermap
     if (stats.isDirectory()) {
-      const gophermapPath = join(requestedPath, 'gophermap');
-      try {
-        await access(gophermapPath, constants.R_OK);
-        const gophermapStats = await stat(gophermapPath);
-
-        // Check gophermap file size
-        if (gophermapStats.size > maxFileSize) {
-          console.error(`Gophermap too large: ${gophermapPath} (${gophermapStats.size} bytes)`);
-          return createGopherError('File too large', hostname, port);
-        }
-
-        const content = await readFile(gophermapPath, 'utf8');
-        return content + GOPHER_TERMINATOR;
-      } catch (error) {
-        if (isUnexpectedError(error)) {
-          console.error(`Error reading gophermap ${gophermapPath}:`, error);
-          return createGopherError('Internal server error', hostname, port);
-        }
-        // No gophermap in directory
-        return createGopherError('No directory index', hostname, port);
-      }
+      return serveDirectory(requestedPath, hostname, port, maxFileSize);
+    } else {
+      return serveFile(requestedPath, hostname, port, maxFileSize);
     }
-
-    // It's a file, check size before reading
-    if (stats.size > maxFileSize) {
-      console.error(`File too large: ${requestedPath} (${stats.size} bytes, max: ${maxFileSize})`);
-      return createGopherError('File too large', hostname, port);
-    }
-
-    // Read and return the file
-    const content = await readFile(requestedPath, 'utf8');
-    return content + GOPHER_TERMINATOR;
   } catch (error) {
-    // Path doesn't exist or isn't accessible
-    if (isUnexpectedError(error)) {
-      console.error(`Error accessing ${requestedPath}:`, error);
-      return createGopherError('Internal server error', hostname, port);
-    }
-    return createGopherError('File not found', hostname, port);
+    return fileNotFound(hostname, port);
   }
 };
 
@@ -83,10 +45,11 @@ const startServer = async () => {
     ? config.server.rootDirectory
     : join(dirname(fileURLToPath(import.meta.url)), '..', config.server.rootDirectory);
 
+  // Validate root directory exists and is accessible
   try {
     await access(ROOT, constants.R_OK);
   } catch (error) {
-    throw new Error(`Root directory not accessible: ${ROOT}`);;
+    throw new Error(`Root directory not accessible: ${ROOT}`);
   }
 
   const server = createServer((socket: Socket) => {
@@ -99,7 +62,7 @@ const startServer = async () => {
       } catch (error) {
         console.error('Error handling request:', error);
         try {
-          socket.write(createGopherError('Internal server error', HOSTNAME, PORT));
+          socket.write(internalError(HOSTNAME, PORT));
           socket.end();
         } catch (writeError) {
           console.error('Error writing error response:', writeError);
@@ -141,7 +104,7 @@ const startServer = async () => {
     const shutdownTimeout = setTimeout(() => {
       console.error('Shutdown timeout exceeded, forcing exit');
       process.exit(1);
-    }, 10000);
+    }, SHUTDOWN_TIMEOUT);
 
     // Don't keep the process alive just for the timeout
     shutdownTimeout.unref();
