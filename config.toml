@@ -2,3 +2,4 @@
 port = 70
 rootDirectory = "./example"
 hostname = "localhost"  # Optional: defaults to system hostname if not set
+maxFileSize = 10485760  # Optional: max file size in bytes (default: 10MB)

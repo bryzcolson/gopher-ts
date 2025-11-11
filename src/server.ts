@@ -16,7 +16,7 @@ const isUnexpectedError = (error: unknown): boolean => {
   return errorCode !== 'ENOENT' && errorCode !== 'EACCES';
 };
 
-const serve = async (path: string, root: string, hostname: string, port: number): Promise<string> => {
+const serve = async (path: string, root: string, hostname: string, port: number, maxFileSize: number): Promise<string> => {
   const cleanPath = path === '' || path === '/' ? '' : path;
 
   const requestedPath = normalize(join(root, cleanPath));
@@ -35,6 +35,14 @@ const serve = async (path: string, root: string, hostname: string, port: number)
       const gophermapPath = join(requestedPath, 'gophermap');
       try {
         await access(gophermapPath, constants.R_OK);
+        const gophermapStats = await stat(gophermapPath);
+
+        // Check gophermap file size
+        if (gophermapStats.size > maxFileSize) {
+          console.error(`Gophermap too large: ${gophermapPath} (${gophermapStats.size} bytes)`);
+          return createGopherError('File too large', hostname, port);
+        }
+
         const content = await readFile(gophermapPath, 'utf8');
         return content + GOPHER_TERMINATOR;
       } catch (error) {
@@ -47,7 +55,13 @@ const serve = async (path: string, root: string, hostname: string, port: number)
       }
     }
 
-    // It's a file, read and return it
+    // It's a file, check size before reading
+    if (stats.size > maxFileSize) {
+      console.error(`File too large: ${requestedPath} (${stats.size} bytes, max: ${maxFileSize})`);
+      return createGopherError('File too large', hostname, port);
+    }
+
+    // Read and return the file
     const content = await readFile(requestedPath, 'utf8');
     return content + GOPHER_TERMINATOR;
   } catch (error) {
@@ -64,6 +78,7 @@ const startServer = async () => {
   const config = await loadConfig();
   const PORT = config.server.port;
   const HOSTNAME = config.server.hostname!;
+  const MAX_FILE_SIZE = config.server.maxFileSize!;
   const ROOT = isAbsolute(config.server.rootDirectory)
     ? config.server.rootDirectory
     : join(dirname(fileURLToPath(import.meta.url)), '..', config.server.rootDirectory);
@@ -78,7 +93,7 @@ const startServer = async () => {
     socket.on('data', async (data: Buffer) => {
       try {
         const request = data.toString('utf8').trim();
-        const content = await serve(request, ROOT, HOSTNAME, PORT);
+        const content = await serve(request, ROOT, HOSTNAME, PORT, MAX_FILE_SIZE);
         socket.write(content);
         socket.end();
       } catch (error) {

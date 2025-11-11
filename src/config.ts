@@ -9,6 +9,7 @@ export type ConfigType = {
     port: number;
     rootDirectory: string;
     hostname?: string;
+    maxFileSize?: number;
   };
 };
 
@@ -35,6 +36,13 @@ export const loadConfig = async (): Promise<ConfigType> => {
     // Set default hostname if not provided
     if (!config.server.hostname) {
       config.server.hostname = hostname();
+    }
+
+    // Set default max file size if not provided (10MB)
+    if (config.server.maxFileSize === undefined) {
+      config.server.maxFileSize = 10 * 1024 * 1024;
+    } else if (typeof config.server.maxFileSize !== 'number' || config.server.maxFileSize < 0) {
+      throw new Error('Config server.maxFileSize must be a positive number');
     }
 
     return config;
