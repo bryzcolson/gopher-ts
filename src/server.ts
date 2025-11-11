@@ -1,5 +1,5 @@
 import { createServer, Socket } from 'net';
-import { readFile, access, constants } from 'fs/promises';
+import { readFile, access, constants, stat } from 'fs/promises';
 import { join, dirname, isAbsolute, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
@@ -26,31 +26,39 @@ const serve = async (path: string, root: string, hostname: string, port: number)
     return createGopherError('Access denied', hostname, port);
   }
 
-  const gophermapPath = join(requestedPath, 'gophermap');
-  try {
-    await access(gophermapPath, constants.R_OK);
-    const content = await readFile(gophermapPath, 'utf8');
-    return content + GOPHER_TERMINATOR;
-  } catch (error) {
-    if (isUnexpectedError(error)) {
-      console.error(`Error reading gophermap ${gophermapPath}:`, error);
-    }
-    // gophermap doesn't exist or isn't readable, try direct file
-  }
-
+  // Check if the requested path exists and get its stats
   try {
     await access(requestedPath, constants.R_OK);
+    const stats = await stat(requestedPath);
+
+    // If it's a directory, look for gophermap
+    if (stats.isDirectory()) {
+      const gophermapPath = join(requestedPath, 'gophermap');
+      try {
+        await access(gophermapPath, constants.R_OK);
+        const content = await readFile(gophermapPath, 'utf8');
+        return content + GOPHER_TERMINATOR;
+      } catch (error) {
+        if (isUnexpectedError(error)) {
+          console.error(`Error reading gophermap ${gophermapPath}:`, error);
+          return createGopherError('Internal server error', hostname, port);
+        }
+        // No gophermap in directory
+        return createGopherError('No directory index', hostname, port);
+      }
+    }
+
+    // It's a file, read and return it
     const content = await readFile(requestedPath, 'utf8');
     return content + GOPHER_TERMINATOR;
   } catch (error) {
-    // file doesn't exist or isn't readable
+    // Path doesn't exist or isn't accessible
     if (isUnexpectedError(error)) {
-      console.error(`Error reading file ${requestedPath}:`, error);
+      console.error(`Error accessing ${requestedPath}:`, error);
       return createGopherError('Internal server error', hostname, port);
     }
+    return createGopherError('File not found', hostname, port);
   }
-
-  return createGopherError('File not found', hostname, port);
 };
 
 const startServer = async () => {
