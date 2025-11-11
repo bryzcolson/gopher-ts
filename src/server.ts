@@ -1,4 +1,4 @@
-import { createServer } from 'net';
+import { createServer, Socket } from 'net';
 import { readFile, access, constants } from 'fs/promises';
 import { join, dirname, isAbsolute, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
@@ -66,10 +66,10 @@ const startServer = async () => {
     throw new Error(`Root directory not accessible: ${ROOT}`);;
   }
 
-  const server = createServer((socket: any) => {
-    socket.on('data', async (data: any) => {
+  const server = createServer((socket: Socket) => {
+    socket.on('data', async (data: Buffer) => {
       try {
-        const request = data.toString().trim();
+        const request = data.toString('utf8').trim();
         const content = await serve(request, ROOT);
         socket.write(content);
         socket.end();
