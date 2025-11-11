@@ -26,7 +26,6 @@ const serve = async (path: string, root: string, hostname: string, port: number)
     return createGopherError('Access denied', hostname, port);
   }
 
-  // Check if the requested path exists and get its stats
   try {
     await access(requestedPath, constants.R_OK);
     const stats = await stat(requestedPath);
@@ -109,6 +108,33 @@ const startServer = async () => {
   server.listen(PORT, () => {
     console.log(`Gopher server listening on ${HOSTNAME}:${PORT}`);
   });
+
+  // Graceful shutdown handler
+  const shutdown = (signal: string) => {
+    console.log(`\nReceived ${signal}, starting graceful shutdown...`);
+
+    server.close((error) => {
+      if (error) {
+        console.error('Error during server shutdown:', error);
+        process.exit(1);
+      }
+      console.log('Server closed successfully');
+      process.exit(0);
+    });
+
+    // Force shutdown after timeout
+    const shutdownTimeout = setTimeout(() => {
+      console.error('Shutdown timeout exceeded, forcing exit');
+      process.exit(1);
+    }, 10000);
+
+    // Don't keep the process alive just for the timeout
+    shutdownTimeout.unref();
+  };
+
+  // Register shutdown handlers
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 };
 
 startServer().catch((error) => {
