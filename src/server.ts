@@ -2,19 +2,17 @@ import { createServer } from 'net';
 import { readFile, access, constants } from 'fs/promises';
 import { join, dirname, isAbsolute, resolve, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { parse } from '@iarna/toml';
+import { loadConfig } from './config.js';
 
-type ConfigType = {
-  server: {
-    port: number;
-    rootDirectory: string;
-  };
-};
-
-const loadConfig = async (): Promise<ConfigType> => {
-  const path = join(dirname(fileURLToPath(import.meta.url)), '..', 'config.toml');
-  const content = await readFile(path, 'utf8');
-  return parse(content) as unknown as ConfigType;
+const isUnexpectedError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (!('code' in error)) {
+    return false;
+  }
+  const errorCode = error.code;
+  return errorCode !== 'ENOENT' && errorCode !== 'EACCES';
 };
 
 const serve = async (path: string, root: string): Promise<string> => {
@@ -33,6 +31,9 @@ const serve = async (path: string, root: string): Promise<string> => {
     const content = await readFile(gophermapPath, 'utf8');
     return content + '\r\n.\r\n';
   } catch (error) {
+    if (isUnexpectedError(error)) {
+      console.error(`Error reading gophermap ${gophermapPath}:`, error);
+    }
     // gophermap doesn't exist or isn't readable, try direct file
   }
 
@@ -42,6 +43,10 @@ const serve = async (path: string, root: string): Promise<string> => {
     return content + '\r\n.\r\n';
   } catch (error) {
     // file doesn't exist or isn't readable
+    if (isUnexpectedError(error)) {
+      console.error(`Error reading file ${requestedPath}:`, error);
+      return '3Internal server error\t\terror.host\t1\r\n.\r\n';
+    }
   }
 
   return '3File not found\t\terror.host\t1\r\n.\r\n';
@@ -54,13 +59,41 @@ const startServer = async () => {
     ? config.server.rootDirectory
     : join(dirname(fileURLToPath(import.meta.url)), '..', config.server.rootDirectory);
 
+  try {
+    await access(ROOT, constants.R_OK);
+  } catch (error) {
+    throw new Error(`Root directory not accessible: ${ROOT}`);;
+  }
+
   const server = createServer((socket: any) => {
     socket.on('data', async (data: any) => {
-      const request = data.toString().trim();
-      const content = await serve(request, ROOT);
-      socket.write(content);
-      socket.end();
+      try {
+        const request = data.toString().trim();
+        const content = await serve(request, ROOT);
+        socket.write(content);
+        socket.end();
+      } catch (error) {
+        console.error('Error handling request:', error);
+        try {
+          socket.write('3Internal server error\t\terror.host\t1\r\n.\r\n');
+          socket.end();
+        } catch (writeError) {
+          console.error('Error writing error response:', writeError);
+        }
+      }
     });
+
+    socket.on('error', (error: Error) => {
+      console.error('Socket error:', error);
+    });
+  });
+
+  server.on('error', (error: Error) => {
+    console.error('Server error:', error);
+    if ('code' in error && error.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use`);
+      process.exit(1);
+    }
   });
 
   server.listen(PORT, () => {
