@@ -16,14 +16,14 @@ const isUnexpectedError = (error: unknown): boolean => {
   return errorCode !== 'ENOENT' && errorCode !== 'EACCES';
 };
 
-const serve = async (path: string, root: string): Promise<string> => {
+const serve = async (path: string, root: string, hostname: string, port: number): Promise<string> => {
   const cleanPath = path === '' || path === '/' ? '' : path;
 
   const requestedPath = normalize(join(root, cleanPath));
   const resolvedRoot = resolve(root);
   const resolvedRequest = resolve(requestedPath);
   if (!resolvedRequest.startsWith(resolvedRoot + sep) && resolvedRequest !== resolvedRoot) {
-    return createGopherError('Access denied');
+    return createGopherError('Access denied', hostname, port);
   }
 
   const gophermapPath = join(requestedPath, 'gophermap');
@@ -46,16 +46,17 @@ const serve = async (path: string, root: string): Promise<string> => {
     // file doesn't exist or isn't readable
     if (isUnexpectedError(error)) {
       console.error(`Error reading file ${requestedPath}:`, error);
-      return createGopherError('Internal server error');
+      return createGopherError('Internal server error', hostname, port);
     }
   }
 
-  return createGopherError('File not found');
+  return createGopherError('File not found', hostname, port);
 };
 
 const startServer = async () => {
   const config = await loadConfig();
   const PORT = config.server.port;
+  const HOSTNAME = config.server.hostname!;
   const ROOT = isAbsolute(config.server.rootDirectory)
     ? config.server.rootDirectory
     : join(dirname(fileURLToPath(import.meta.url)), '..', config.server.rootDirectory);
@@ -70,13 +71,13 @@ const startServer = async () => {
     socket.on('data', async (data: Buffer) => {
       try {
         const request = data.toString('utf8').trim();
-        const content = await serve(request, ROOT);
+        const content = await serve(request, ROOT, HOSTNAME, PORT);
         socket.write(content);
         socket.end();
       } catch (error) {
         console.error('Error handling request:', error);
         try {
-          socket.write(createGopherError('Internal server error'));
+          socket.write(createGopherError('Internal server error', HOSTNAME, PORT));
           socket.end();
         } catch (writeError) {
           console.error('Error writing error response:', writeError);
@@ -98,7 +99,7 @@ const startServer = async () => {
   });
 
   server.listen(PORT, () => {
-    console.log(`Gopher server listening on port ${PORT}`);
+    console.log(`Gopher server listening on ${HOSTNAME}:${PORT}`);
   });
 };
 

@@ -1,3 +1,4 @@
 [server]
 port = 70
 rootDirectory = "./example"
+hostname = "localhost"  # Optional: defaults to system hostname if not set

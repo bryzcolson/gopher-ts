@@ -2,11 +2,13 @@ import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from '@iarna/toml';
+import { hostname } from 'os';
 
 export type ConfigType = {
   server: {
     port: number;
     rootDirectory: string;
+    hostname?: string;
   };
 };
 
@@ -28,6 +30,11 @@ export const loadConfig = async (): Promise<ConfigType> => {
     }
     if (typeof config.server.rootDirectory !== 'string') {
       throw new Error('Config missing or invalid server.rootDirectory');
+    }
+
+    // Set default hostname if not provided
+    if (!config.server.hostname) {
+      config.server.hostname = hostname();
     }
 
     return config;
